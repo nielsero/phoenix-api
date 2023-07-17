@@ -5,8 +5,8 @@ const requestLogger = (
   res: Response,
   next: NextFunction
 ): void => {
-  console.log("[request]", req.method, req.path)
-  console.log("[request]", req.body)
+  console.log("[request-logger]", req.method, req.path)
+  console.log("[request-logger]", req.body)
   next()
 }
 

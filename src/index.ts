@@ -6,7 +6,8 @@ import express, {
 } from "express"
 import mongoose from "mongoose"
 import config from "./config"
-import requestLogger from "./middleware/requestLogger"
+import requestLogger from "./middleware/request-logger"
+import fenixScrapperService from "./services/fenix-scrapper.service"
 
 mongoose
   .connect(config.mongoURI, { retryWrites: true, w: "majority" })
@@ -19,9 +20,13 @@ mongoose
 
     app.use(requestLogger)
 
-    app.use("/health", (req: Request, res: Response, next: NextFunction) => {
-      res.status(200).json({ status: "OK" })
-    })
+    app.use(
+      "/health",
+      async (req: Request, res: Response, next: NextFunction) => {
+        res.status(200).json({ status: "OK" })
+        await fenixScrapperService.start()
+      }
+    )
 
     app.listen(config.port, () => {
       console.log(`[express] Server is listening on port ${config.port}!`)
