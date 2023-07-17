@@ -3,19 +3,15 @@ import StealthPlugin from "puppeteer-extra-plugin-stealth"
 import { type Browser, type Page } from "puppeteer"
 import config from "../config"
 import { formatCourseCode } from "../util"
-
-interface Course {
-  code: string
-  name: string
-}
+import { type ICourse } from "../models/course.model"
 
 const authenticateUser = async (page: Page): Promise<void> => {}
 
-const getCourses = async (page: Page): Promise<Course[]> => {
+const getCourses = async (page: Page): Promise<ICourse[]> => {
   await page.goto(config.fenixCoursesURL)
 
   let courses = await page.evaluate(() => {
-    const courses: Course[] = []
+    const courses: ICourse[] = []
     const table: HTMLTableElement | null =
       document.querySelector(".degreeTable")
 
