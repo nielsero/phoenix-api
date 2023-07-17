@@ -4,6 +4,7 @@ import { type Browser, type Page } from "puppeteer"
 import config from "../config"
 import { formatCourseCode } from "../util"
 import { type ICourse } from "../models/course.model"
+import courseService from "../services/course.service"
 
 const authenticateUser = async (page: Page): Promise<void> => {}
 
@@ -35,6 +36,9 @@ const getCourses = async (page: Page): Promise<ICourse[]> => {
   return courses
 }
 
+/**
+ * Starts scrapping fenix website for courses, subjects and grades
+ */
 const start = async (): Promise<void> => {
   console.log("[fenix-scraper] Started")
 
@@ -46,6 +50,14 @@ const start = async (): Promise<void> => {
   console.log("[fenix-scrapper] Courses:")
   const courses = await getCourses(page)
   console.log(courses)
+
+  courses.forEach(async (course) => {
+    try {
+      await courseService.create(course.code, course.name)
+    } catch (err: any) {
+      console.log(err.message)
+    }
+  })
 
   await browser.close()
   console.log("[fenix-scraper] Finished")
