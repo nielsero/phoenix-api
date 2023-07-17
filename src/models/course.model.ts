@@ -1,10 +1,12 @@
-import { model, Schema, type Types } from "mongoose"
+import { model, Schema, type Types, type Document } from "mongoose"
 
 export interface ICourse {
   code: string
   name: string
   subjects?: Types.ObjectId[]
 }
+
+export interface ICourseDocument extends ICourse, Document {}
 
 const courseSchema = new Schema<ICourse>({
   code: { type: String, required: true, unique: true },
@@ -15,6 +17,6 @@ const courseSchema = new Schema<ICourse>({
   }
 })
 
-const CourseModel = model<ICourse>("Course", courseSchema)
+const CourseModel = model<ICourseDocument>("Course", courseSchema)
 
 export default CourseModel

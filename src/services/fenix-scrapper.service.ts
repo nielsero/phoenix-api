@@ -8,13 +8,9 @@ import {
   getExecutionCourseIDFromLink
 } from "../util"
 import { type ICourse } from "../models/course.model"
+import { type ISubject } from "../models/subject.model"
 import courseService from "../services/course.service"
-
-interface Subject {
-  name: string
-  link: string
-  executionCodeID: string
-}
+import subjectService from "../services/subject.service"
 
 const authenticateUser = async (page: Page): Promise<void> => {}
 
@@ -53,9 +49,9 @@ const getSubjectExecutionCourseID = async (
   await page.goto(subjectLink)
 
   const link = await page.evaluate(() => {
-    const latNav = document.querySelector("#latnav")
-    const lists = latNav?.querySelectorAll("ul")
-    if (lists == null) throw new Error("No lists found in #latNav")
+    const latnav = document.querySelector("#latnav")
+    const lists = latnav?.querySelectorAll("ul")
+    if (lists == null) throw new Error("No lists found in #latnav")
     const lastList = lists[lists.length - 1]
     const link = lastList?.querySelector("a")?.href ?? ""
     return link
@@ -67,12 +63,15 @@ const getSubjectExecutionCourseID = async (
 const getCourseSubjects = async (
   page: Page,
   courseCode: string
-): Promise<Subject[]> => {
+): Promise<ISubject[]> => {
   const courseURL = getCourseUrlFromCode(courseCode)
   await page.goto(courseURL)
 
-  const subjects: Subject[] = await page.evaluate(() => {
-    const subjects: Subject[] = []
+  const course = await courseService.findByCode(courseCode)
+  if (course === null) throw new Error("Course not found")
+
+  const subjects: ISubject[] = await page.evaluate(() => {
+    const subjects: ISubject[] = []
     const tables = Array.from(document.querySelectorAll(".tab_lay"))
 
     for (const table of tables) {
@@ -84,24 +83,34 @@ const getCourseSubjects = async (
         let name = cells[0]?.querySelector("a")?.textContent?.trim() ?? ""
         let link = cells[0]?.querySelector("a")?.href ?? ""
         if (name !== "" && link !== "")
-          subjects.push({ name, link, executionCodeID: "" })
+          subjects.push({
+            name,
+            link,
+            executionCodeID: ""
+          })
 
         name = cells[1]?.querySelector("a")?.textContent?.trim() ?? ""
         link = cells[1]?.querySelector("a")?.href ?? ""
         if (name !== "" && link !== "")
-          subjects.push({ name, link, executionCodeID: "" })
+          subjects.push({
+            name,
+            link,
+            executionCodeID: ""
+          })
       })
     }
     return subjects
   })
 
   for (const subject of subjects) {
+    subject.course = course._id
     subject.executionCodeID = await getSubjectExecutionCourseID(
       page,
       subject.link
     )
   }
 
+  console.log("subjects:", subjects)
   return subjects
 }
 
@@ -112,14 +121,14 @@ const start = async (): Promise<void> => {
   console.log("[fenix-scraper] Started")
 
   puppeteer.use(StealthPlugin()) // avoids bot detection
-  const browser: Browser = await puppeteer.launch({ headless: false })
+  const browser: Browser = await puppeteer.launch()
   const page: Page = await browser.newPage()
   await authenticateUser(page)
 
   console.log("[fenix-scrapper] Courses:")
   const courses = await getCourses(page)
-  console.log(courses)
 
+  // Populate courses if they don't exist
   courses.forEach(async (course) => {
     try {
       await courseService.create(course.code, course.name)
@@ -127,6 +136,27 @@ const start = async (): Promise<void> => {
       console.log(err.message)
     }
   })
+
+  const actualCourses = await courseService.getAll()
+  console.log("actualCourses", actualCourses)
+
+  for (const course of actualCourses) {
+    console.log("course:", course)
+    const subjects = await getCourseSubjects(page, course.code)
+
+    for (const subject of subjects) {
+      try {
+        await subjectService.create(
+          subject.name,
+          subject.link,
+          subject.executionCodeID,
+          subject.course?.toString()
+        )
+      } catch (err: any) {
+        console.log(err.message)
+      }
+    }
+  }
 
   const subjects = await getCourseSubjects(page, courses[0].code)
   console.log(subjects)
