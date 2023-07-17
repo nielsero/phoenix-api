@@ -3,7 +3,6 @@ import CourseModel, { type ICourse } from "../models/course.model"
 const create = async (code: string, name: string): Promise<ICourse> => {
   if (findByCode(code) !== null) throw new Error("Course already exists")
   const course = await CourseModel.create({ code, name })
-  console.log(course)
   return course
 }
 
@@ -12,4 +11,9 @@ const findByCode = async (code: string): Promise<ICourse | null> => {
   return course
 }
 
-export default { create, findByCode }
+const getAll = async (): Promise<ICourse[]> => {
+  const courses = await CourseModel.find()
+  return courses
+}
+
+export default { create, findByCode, getAll }

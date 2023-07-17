@@ -2,9 +2,19 @@ import puppeteer from "puppeteer-extra"
 import StealthPlugin from "puppeteer-extra-plugin-stealth"
 import { type Browser, type Page } from "puppeteer"
 import config from "../config"
-import { formatCourseCode } from "../util"
+import {
+  formatCourseCode,
+  getCourseUrlFromCode,
+  getExecutionCourseIDFromLink
+} from "../util"
 import { type ICourse } from "../models/course.model"
 import courseService from "../services/course.service"
+
+interface Subject {
+  name: string
+  link: string
+  executionCodeID: string
+}
 
 const authenticateUser = async (page: Page): Promise<void> => {}
 
@@ -36,6 +46,65 @@ const getCourses = async (page: Page): Promise<ICourse[]> => {
   return courses
 }
 
+const getSubjectExecutionCourseID = async (
+  page: Page,
+  subjectLink: string
+): Promise<string> => {
+  await page.goto(subjectLink)
+
+  const link = await page.evaluate(() => {
+    const latNav = document.querySelector("#latnav")
+    const lists = latNav?.querySelectorAll("ul")
+    if (lists == null) throw new Error("No lists found in #latNav")
+    const lastList = lists[lists.length - 1]
+    const link = lastList?.querySelector("a")?.href ?? ""
+    return link
+  })
+
+  return getExecutionCourseIDFromLink(link)
+}
+
+const getCourseSubjects = async (
+  page: Page,
+  courseCode: string
+): Promise<Subject[]> => {
+  const courseURL = getCourseUrlFromCode(courseCode)
+  await page.goto(courseURL)
+
+  const subjects: Subject[] = await page.evaluate(() => {
+    const subjects: Subject[] = []
+    const tables = Array.from(document.querySelectorAll(".tab_lay"))
+
+    for (const table of tables) {
+      const rows = Array.from(table.querySelectorAll("tr"))
+
+      rows.forEach((row, index) => {
+        if (index === 0) return // ignore first title row
+        const cells = Array.from(row.querySelectorAll("td"))
+        let name = cells[0]?.querySelector("a")?.textContent?.trim() ?? ""
+        let link = cells[0]?.querySelector("a")?.href ?? ""
+        if (name !== "" && link !== "")
+          subjects.push({ name, link, executionCodeID: "" })
+
+        name = cells[1]?.querySelector("a")?.textContent?.trim() ?? ""
+        link = cells[1]?.querySelector("a")?.href ?? ""
+        if (name !== "" && link !== "")
+          subjects.push({ name, link, executionCodeID: "" })
+      })
+    }
+    return subjects
+  })
+
+  for (const subject of subjects) {
+    subject.executionCodeID = await getSubjectExecutionCourseID(
+      page,
+      subject.link
+    )
+  }
+
+  return subjects
+}
+
 /**
  * Starts scrapping fenix website for courses, subjects and grades
  */
@@ -58,6 +127,9 @@ const start = async (): Promise<void> => {
       console.log(err.message)
     }
   })
+
+  const subjects = await getCourseSubjects(page, courses[0].code)
+  console.log(subjects)
 
   await browser.close()
   console.log("[fenix-scraper] Finished")
