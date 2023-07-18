@@ -2,11 +2,7 @@ import puppeteer from "puppeteer-extra"
 import StealthPlugin from "puppeteer-extra-plugin-stealth"
 import { type Browser, type Page } from "puppeteer"
 import config from "../config"
-import {
-  formatCourseCode,
-  getCourseUrlFromCode,
-  getExecutionCourseIDFromLink
-} from "../util"
+import { formatCourseCode, getCourseUrlFromCode, getExecutionCourseIDFromLink } from "../util"
 import { type ICourse } from "../models/course.model"
 import { type ISubject } from "../models/subject.model"
 import courseService from "../services/course.service"
@@ -21,8 +17,7 @@ const getCourses = async (page: Page): Promise<ICourse[]> => {
   const { names, codes } = await page.evaluate(() => {
     const names: string[] = []
     const codes: string[] = []
-    const table: HTMLTableElement | null =
-      document.querySelector(".degreeTable")
+    const table: HTMLTableElement | null = document.querySelector(".degreeTable")
 
     if (table === null) throw new Error("No courses table found")
 
@@ -53,7 +48,7 @@ const scrapeCourses = async (page: Page): Promise<void> => {
   console.log("[fenix-scrapper-service] Scraping courses ...")
 
   const courses = await getCourses(page)
-  console.log("[fenix-scrapper-service] Courses scraped:", courses)
+  console.log("[fenix-scrapper-service] Courses scraped:\n", courses)
 
   // Populate courses if they don't exist
   courses.forEach(async (course) => {
@@ -67,10 +62,7 @@ const scrapeCourses = async (page: Page): Promise<void> => {
   console.log("[fenix-scrapper-service] Finished scraping courses")
 }
 
-const getSubjectExecutionCourseID = async (
-  page: Page,
-  subjectLink: string
-): Promise<string> => {
+const getSubjectExecutionCourseID = async (page: Page, subjectLink: string): Promise<string> => {
   await page.goto(subjectLink)
 
   const link = await page.evaluate(() => {
@@ -85,21 +77,19 @@ const getSubjectExecutionCourseID = async (
   return getExecutionCourseIDFromLink(link)
 }
 
-const getCourseSubjects = async (
-  page: Page,
-  courseCode: string
-): Promise<ISubject[]> => {
+const getCourseSubjects = async (page: Page, courseCode: string): Promise<ISubject[]> => {
   const course = await courseService.findByCode(courseCode)
   const courseURL = getCourseUrlFromCode(courseCode)
   await page.goto(courseURL)
 
   if (course === null) throw new Error("Course not found")
 
-  const subjects: ISubject[] = await page.evaluate(() => {
-    const subjects: ISubject[] = []
+  const { names, links } = await page.evaluate(() => {
+    const names: string[] = []
+    const links: string[] = []
     const tables = Array.from(document.querySelectorAll(".tab_lay"))
 
-    for (const table of tables) {
+    tables.forEach((table) => {
       const rows = Array.from(table.querySelectorAll("tr"))
 
       rows.forEach((row, index) => {
@@ -107,55 +97,67 @@ const getCourseSubjects = async (
         const cells = Array.from(row.querySelectorAll("td"))
         let name = cells[0]?.querySelector("a")?.textContent?.trim() ?? ""
         let link = cells[0]?.querySelector("a")?.href ?? ""
-        if (name !== "" && link !== "")
-          subjects.push({
-            name,
-            link,
-            executionCodeID: ""
-          })
+        if (name !== "" && link !== "") {
+          names.push(name)
+          links.push(link)
+        }
 
         name = cells[1]?.querySelector("a")?.textContent?.trim() ?? ""
         link = cells[1]?.querySelector("a")?.href ?? ""
-        if (name !== "" && link !== "")
-          subjects.push({
-            name,
-            link,
-            executionCodeID: ""
-          })
+        if (name !== "" && link !== "") {
+          names.push(name)
+          links.push(link)
+        }
       })
-    }
-    return subjects
+    })
+    return { names, links }
   })
 
-  for (const subject of subjects) {
-    subject.course = course._id
-    subject.executionCodeID = await getSubjectExecutionCourseID(
-      page,
-      subject.link
-    )
+  const subjects: ISubject[] = []
+
+  for (let i = 0; i < names.length; i++) {
+    console.log("[fenix-scrapper-service] Getting execution course id for subject: ", names[i])
+    const executionCodeID = await getSubjectExecutionCourseID(page, links[i])
+    console.log(`[fenix-scrapper-service] Execution course id for subject ${names[i]}: ${executionCodeID}`)
+    const subject = {
+      name: names[i],
+      link: links[i],
+      executionCodeID,
+      course: course._id
+    }
+    subjects.push(subject)
   }
 
-  console.log("subjects:", subjects)
   return subjects
 }
 
 const scrapeSubjects = async (page: Page): Promise<void> => {
   console.log("[fenix-scrapper-service] Scraping subjects ...")
-
   const courses = await courseService.getAll()
 
-  courses.forEach(async (course) => {
+  for (const course of courses) {
     try {
-      console.log(
-        "[fenix-scraper-service] Scraping subjects for course:",
-        course.code
-      )
+      console.log("[fenix-scraper-service] Scraping subjects for course:", course.code)
       const subjects = await getCourseSubjects(page, course.code)
-      console.log("[fenix-scraper-service] Subjects scraped:", subjects)
+      console.log("[fenix-scraper-service] Subjects scraped:\n", subjects)
+
+      // Populate subjects if they don't exist
+      subjects.forEach(async (subject) => {
+        try {
+          await subjectService.create(
+            subject.name,
+            subject.link,
+            subject.executionCodeID,
+            subject.course.toString()
+          )
+        } catch (err: any) {
+          console.error("[fenix-scraper-service]", err.message)
+        }
+      })
     } catch (err: any) {
       console.error("[fenix-scraper-service]", err.message)
     }
-  })
+  }
 
   console.log("[fenix-scrapper-service] Finished scraping subjects")
 }
@@ -168,32 +170,13 @@ const start = async (): Promise<void> => {
 
   // Initial setup
   puppeteer.use(StealthPlugin()) // avoids bot detection
-  const browser: Browser = await puppeteer.launch() // launch the browser
+  const browser: Browser = await puppeteer.launch({ headless: false }) // launch the browser
   const page: Page = await browser.newPage() // open a new page
 
   await authenticateUser(page)
   await scrapeCourses(page)
-
-  const actualCourses = await courseService.getAll()
-  console.log("actualCourses", actualCourses)
-
-  for (const course of actualCourses) {
-    console.log("course:", course)
-    const subjects = await getCourseSubjects(page, course.code)
-
-    for (const subject of subjects) {
-      try {
-        await subjectService.create(
-          subject.name,
-          subject.link,
-          subject.executionCodeID,
-          subject.course?.toString()
-        )
-      } catch (err: any) {
-        console.log(err.message)
-      }
-    }
-  }
+  await page.waitForTimeout(2000) // wait for db to store all courses (apparently it takes time)
+  await scrapeSubjects(page)
 
   await browser.close()
   console.log("[fenix-scraper-service] Finished")

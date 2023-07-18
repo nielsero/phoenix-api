@@ -5,12 +5,12 @@ const create = async (
   name: string,
   link: string,
   executionCodeID: string,
-  courseID: string = ""
+  courseID: string
 ): Promise<ISubject> => {
   const course = await CourseModel.findById(courseID)
   if (course === null) throw new Error("Course not found")
 
-  const subjectExists = await SubjectModel.exists({ executionCodeID })
+  const subjectExists = await SubjectModel.exists({ executionCodeID, course: courseID })
   if (subjectExists !== null) throw new Error("Subject already exists")
 
   const subject = await SubjectModel.create({

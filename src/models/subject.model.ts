@@ -4,7 +4,7 @@ export interface ISubject {
   name: string
   link: string
   executionCodeID: string
-  course?: Types.ObjectId
+  course: Types.ObjectId
 }
 
 export interface ISubjectDocument extends ISubject, Document {}
@@ -12,7 +12,7 @@ export interface ISubjectDocument extends ISubject, Document {}
 const subjectSchema = new Schema<ISubject>({
   name: { type: String, required: true },
   link: { type: String, required: true },
-  executionCodeID: { type: String, required: true, unique: true },
+  executionCodeID: { type: String, required: true },
   course: { type: Schema.Types.ObjectId, ref: "Course", required: true }
 })
 

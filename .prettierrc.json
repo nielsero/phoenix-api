@@ -5,5 +5,6 @@
   "useTabs": false,
   "trailingComma": "none",
   "semi": false,
-  "endOfLine": "auto"
+  "endOfLine": "auto",
+  "printWidth": 110
 }
