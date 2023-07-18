@@ -181,7 +181,7 @@ const start = async (): Promise<void> => {
   const page: Page = await browser.newPage() // open a new page
 
   await scrapeCourses(page)
-  await page.waitForTimeout(2000) // wait for db to store all courses (apparently it takes time)
+  await new Promise((resolve) => setTimeout(resolve, 2000)) // wait for db to store all courses (it takes time)
   await scrapeSubjects(page)
   await authenticateUser(page)
 

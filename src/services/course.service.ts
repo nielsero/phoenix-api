@@ -2,7 +2,7 @@ import CourseModel, { type ICourseDocument } from "../models/course.model"
 
 const create = async (code: string, name: string): Promise<ICourseDocument> => {
   const courseExists = await CourseModel.exists({ code })
-  if (courseExists !== null) throw new Error("Course already exists with this code")
+  if (courseExists !== null) throw new Error("Course already exists")
   const course = await CourseModel.create({ code, name })
   return course
 }
