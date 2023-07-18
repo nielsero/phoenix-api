@@ -1,15 +1,17 @@
 import { model, Schema, type Types, type Document } from "mongoose"
 
+export interface IScore {
+  score: number
+  test: string
+  total: number
+  provisionalAverage: number
+}
+
 export interface IScoreCard {
   student: Types.ObjectId
   subject: Types.ObjectId
   attendancePercentage: number
-  scores: Array<{
-    test: string
-    score: number
-    total: number
-    provisionalAverage: number
-  }>
+  scores: IScore[]
 }
 
 export interface IScoreCardDocument extends IScoreCard, Document {}

@@ -24,3 +24,7 @@ export const getCourseUrlFromCode = (code: string): string => {
 export const getExecutionCourseIDFromLink = (link: string): string => {
   return link.split("executionCourseID=")[1]
 }
+
+export const getScoreCardsUrlFromExecutionCourseID = (executionCourseID: string): string => {
+  return `https://fenix.isutc.ac.mz/isutc/publico/executionCourse.do?method=marks&executionCourseID=${executionCourseID}`
+}

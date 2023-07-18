@@ -2,10 +2,17 @@ import puppeteer from "puppeteer-extra"
 import StealthPlugin from "puppeteer-extra-plugin-stealth"
 import { type Browser, type Page } from "puppeteer"
 import config from "../config"
-import { formatCourseCode, getCourseUrlFromCode, getExecutionCourseIDFromLink } from "../util"
+import {
+  formatCourseCode,
+  getCourseUrlFromCode,
+  getExecutionCourseIDFromLink,
+  getScoreCardsUrlFromExecutionCourseID
+} from "../util"
 import logger from "../util/logger"
 import { type ICourse } from "../models/course.model"
 import { type ISubject } from "../models/subject.model"
+import { type IStudent } from "../models/student.model"
+import { type IScore, type IScoreCard } from "../models/score-card.model"
 import courseService from "./course.service"
 import subjectService from "./subject.service"
 
@@ -15,7 +22,7 @@ const authenticateUser = async (page: Page): Promise<void> => {
   await page.goto(config.fenixLoginURL)
 
   // Fill in the login form
-  await page.type("#username", "test")
+  await page.type("#username", config.fenixUsername)
   await page.type("#password", config.fenixPassword)
 
   // After clicking submit we have to wait for the page to load
@@ -188,8 +195,86 @@ const scrapeSubjects = async (page: Page): Promise<void> => {
   logger.info("fenix-scraper-service", "Finished scraping subjects")
 }
 
+const getSubjectScoreCards = async (page: Page, executionCodeID: string): Promise<IScoreCard[]> => {
+  await page.goto(getScoreCardsUrlFromExecutionCourseID(executionCodeID))
+  await new Promise((resolve) => setTimeout(resolve, 10000))
+
+  const { studentNumbers, studentNames, attendancePercentages, tests, scores, totals } = await page.evaluate(
+    () => {
+      const studentNumbers: string[] = []
+      const studentNames: string[] = []
+      const attendancePercentages: string[] = []
+      const tests: string[] = []
+      const scores: number[][] = []
+      let totals: number[] = []
+
+      const tables = Array.from(document.querySelectorAll(".tab_complex"))
+
+      tables.forEach((table, index) => {
+        const rows = Array.from(table.querySelectorAll("tr"))
+
+        rows.forEach((row, index) => {
+          if (index === rows.length - 2) return // ignore second to last row (it's blank)
+
+          // first row has name of all tests
+          if (index === 0) {
+            const cells = Array.from(row.querySelectorAll("th"))
+            for (let i = 3; i < cells.length - 2; i++) {
+              tests.push(cells[i]?.textContent?.trim() ?? "")
+            }
+            return
+          }
+
+          const cells = Array.from(row.querySelectorAll("td"))
+          const studentScores: number[] = []
+
+          for (let i = 3; i < cells.length - 2; i++) {
+            const score = cells[i]?.textContent?.trim() ?? ""
+            studentScores.push(parseFloat(score))
+          }
+
+          if (index === rows.length - 1) {
+            totals = [...studentScores]
+            return
+          }
+
+          studentNumbers.push(cells[0]?.textContent?.trim() ?? "")
+          studentNames.push(cells[1]?.textContent?.trim() ?? "")
+          attendancePercentages.push(cells[2]?.textContent?.trim() ?? "")
+
+          scores.push(studentScores)
+        })
+      })
+
+      return { studentNumbers, studentNames, attendancePercentages, tests, scores, totals }
+    }
+  )
+
+  console.log("Numbers:", studentNumbers)
+  console.log("Names:", studentNames)
+  console.log("Attendance:", attendancePercentages)
+  console.log("Tests", tests)
+  console.log("Totals", totals)
+  console.log("Scores", scores)
+
+  return []
+}
+
+const scrapeScoreCards = async (page: Page): Promise<void> => {
+  logger.info("fenix-scraper-service", "Scraping score cards ...")
+  const subjects = [await subjectService.findByExecutionCodeID("1689262177124364")]
+
+  for (const subject of subjects) {
+    if (subject === null) throw new Error("Subject not found")
+    const scores = await getSubjectScoreCards(page, subject.executionCodeID)
+    console.log(scores)
+  }
+
+  logger.info("fenix-scraper-service", "Finished scraping score cards")
+}
+
 /**
- * Starts scraping fenix website for courses, subjects and grades
+ * Starts scraping fenix website for courses, subjects, students and scores
  */
 const start = async (): Promise<void> => {
   logger.info("fenix-scraper-service", "Starting ...")
@@ -199,12 +284,13 @@ const start = async (): Promise<void> => {
   const browser: Browser = await puppeteer.launch({ headless: false })
   const page: Page = await browser.newPage()
 
-  await scrapeCourses(page)
-  await new Promise((resolve) => setTimeout(resolve, 2000)) // wait for db to store all courses (it takes time)
-  await scrapeSubjects(page)
+  // await scrapeCourses(page)
+  // await new Promise((resolve) => setTimeout(resolve, 2000)) // wait for db to store all courses (it takes time)
+  // await scrapeSubjects(page)
 
   try {
     await authenticateUser(page)
+    await scrapeScoreCards(page)
   } catch (err: any) {
     logger.error("fenix-scraper-service", err.message)
   }

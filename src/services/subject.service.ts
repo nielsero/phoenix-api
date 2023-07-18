@@ -27,4 +27,14 @@ const findByLink = async (link: string): Promise<ISubject | null> => {
   return subject
 }
 
-export default { create, findByLink }
+const findByExecutionCodeID = async (executionCodeID: string): Promise<ISubject | null> => {
+  const subject = await SubjectModel.findOne({ executionCodeID })
+  return subject
+}
+
+const getAll = async (): Promise<ISubject[]> => {
+  const subjects = await SubjectModel.find()
+  return subjects
+}
+
+export default { create, findByLink, findByExecutionCodeID, getAll }

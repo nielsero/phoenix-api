@@ -1,7 +1,7 @@
 import { model, Schema, type Types, type Document } from "mongoose"
 
 export interface IStudent {
-  code: string
+  number: string
   name: string
   course: Types.ObjectId
   subjects: Types.ObjectId[]
@@ -10,7 +10,7 @@ export interface IStudent {
 export interface IStudentDocument extends IStudent, Document {}
 
 const studentSchema = new Schema<IStudent>({
-  code: { type: String, required: true, unique: true },
+  number: { type: String, required: true, unique: true },
   name: { type: String, required: true },
   course: { type: Schema.Types.ObjectId, ref: "Course", required: true },
   subjects: {
