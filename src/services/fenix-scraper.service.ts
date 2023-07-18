@@ -199,25 +199,27 @@ const getSubjectScoreCards = async (page: Page, executionCodeID: string): Promis
   await page.goto(getScoreCardsUrlFromExecutionCourseID(executionCodeID))
   await new Promise((resolve) => setTimeout(resolve, 10000))
 
-  const { studentNumbers, studentNames, attendancePercentages, tests, scores, totals } = await page.evaluate(
-    () => {
+  const { studentNumbers, studentNames, attendancePercentages, tests, scores, totals, provisionalAverages } =
+    await page.evaluate(() => {
       const studentNumbers: string[] = []
       const studentNames: string[] = []
       const attendancePercentages: string[] = []
       const tests: string[] = []
       const scores: number[][] = []
       let totals: number[] = []
+      const provisionalAverages: number[] = []
 
       const tables = Array.from(document.querySelectorAll(".tab_complex"))
 
-      tables.forEach((table, index) => {
+      tables.forEach((table, indexTable) => {
         const rows = Array.from(table.querySelectorAll("tr"))
 
-        rows.forEach((row, index) => {
-          if (index === rows.length - 2) return // ignore second to last row (it's blank)
-
+        rows.forEach((row, indexRow) => {
+          if (indexRow === rows.length - 2) return // ignore second to last row (it's blank)
           // first row has name of all tests
-          if (index === 0) {
+          if (indexRow === 0) {
+            if (indexTable !== 1) return // only need tests of first table
+
             const cells = Array.from(row.querySelectorAll("th"))
             for (let i = 3; i < cells.length - 2; i++) {
               tests.push(cells[i]?.textContent?.trim() ?? "")
@@ -233,7 +235,9 @@ const getSubjectScoreCards = async (page: Page, executionCodeID: string): Promis
             studentScores.push(parseFloat(score))
           }
 
-          if (index === rows.length - 1) {
+          if (indexRow === rows.length - 1) {
+            if (indexTable !== 1) return // only need totals of first table
+
             totals = [...studentScores]
             return
           }
@@ -241,14 +245,22 @@ const getSubjectScoreCards = async (page: Page, executionCodeID: string): Promis
           studentNumbers.push(cells[0]?.textContent?.trim() ?? "")
           studentNames.push(cells[1]?.textContent?.trim() ?? "")
           attendancePercentages.push(cells[2]?.textContent?.trim() ?? "")
+          provisionalAverages.push(parseFloat(cells[cells.length - 1]?.textContent?.trim() ?? ""))
 
           scores.push(studentScores)
         })
       })
 
-      return { studentNumbers, studentNames, attendancePercentages, tests, scores, totals }
-    }
-  )
+      return {
+        studentNumbers,
+        studentNames,
+        attendancePercentages,
+        tests,
+        scores,
+        totals,
+        provisionalAverages
+      }
+    })
 
   console.log("Numbers:", studentNumbers)
   console.log("Names:", studentNames)
@@ -256,13 +268,14 @@ const getSubjectScoreCards = async (page: Page, executionCodeID: string): Promis
   console.log("Tests", tests)
   console.log("Totals", totals)
   console.log("Scores", scores)
+  console.log("Provisional averages", provisionalAverages)
 
   return []
 }
 
 const scrapeScoreCards = async (page: Page): Promise<void> => {
   logger.info("fenix-scraper-service", "Scraping score cards ...")
-  const subjects = [await subjectService.findByExecutionCodeID("1689262177124364")]
+  const subjects = [await subjectService.findByExecutionCodeID("1126312223703854")]
 
   for (const subject of subjects) {
     if (subject === null) throw new Error("Subject not found")

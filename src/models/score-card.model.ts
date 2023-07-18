@@ -1,7 +1,7 @@
 import { model, Schema, type Types, type Document } from "mongoose"
 
 export interface IScore {
-  score: number
+  score: number | null
   test: string
   total: number
   provisionalAverage: number
@@ -10,7 +10,7 @@ export interface IScore {
 export interface IScoreCard {
   student: Types.ObjectId
   subject: Types.ObjectId
-  attendancePercentage: number
+  attendancePercentage: string
   scores: IScore[]
 }
 
@@ -19,6 +19,7 @@ export interface IScoreCardDocument extends IScoreCard, Document {}
 const scoreCardSchema = new Schema<IScoreCard>({
   student: { type: Schema.Types.ObjectId, ref: "Student", required: true },
   subject: { type: Schema.Types.ObjectId, ref: "Subject", required: true },
+  attendancePercentage: { type: String, required: true },
   scores: {
     type: [
       {
