@@ -3,12 +3,31 @@ import StealthPlugin from "puppeteer-extra-plugin-stealth"
 import { type Browser, type Page } from "puppeteer"
 import config from "../config"
 import { formatCourseCode, getCourseUrlFromCode, getExecutionCourseIDFromLink } from "../util"
+import logger from "../util/logger"
 import { type ICourse } from "../models/course.model"
 import { type ISubject } from "../models/subject.model"
-import courseService from "../services/course.service"
-import subjectService from "../services/subject.service"
+import courseService from "./course.service"
+import subjectService from "./subject.service"
 
-const authenticateUser = async (page: Page): Promise<void> => {}
+const authenticateUser = async (page: Page): Promise<void> => {
+  logger.info("fenix-scraper-service", "Authenticating user ...")
+
+  await page.goto(config.fenixLoginURL)
+
+  // Fill in the login form
+  await page.type("#username", "test")
+  await page.type("#password", config.fenixPassword)
+
+  // After clicking submit we have to wait for the page to load
+  await Promise.all([page.waitForNavigation(), page.click("[type='submit']")])
+
+  // If authentication is successful, the user will be redirected to the home page
+  await page.waitForSelector("html")
+  const pageURL = await page.evaluate(() => location.href.trim())
+  if (pageURL !== config.fenixHomeURL) throw new Error("Authentication failed")
+
+  logger.info("fenix-scraper-service", "User authenticated")
+}
 
 const getCourses = async (page: Page): Promise<ICourse[]> => {
   await page.goto(config.fenixCoursesURL)
@@ -45,21 +64,22 @@ const getCourses = async (page: Page): Promise<ICourse[]> => {
 }
 
 const scrapeCourses = async (page: Page): Promise<void> => {
-  console.log("[fenix-scrapper-service] Scraping courses ...")
+  logger.info("fenix-scraper-service", "Scraping courses ...")
 
   const courses = await getCourses(page)
-  console.log("[fenix-scrapper-service] Courses scraped:\n", courses)
+  logger.info("fenix-scraper-service", "Courses scraped:")
+  console.log(courses)
 
   // Populate courses if they don't exist
   courses.forEach(async (course) => {
     try {
       await courseService.create(course.code, course.name)
     } catch (err: any) {
-      console.error("[fenix-scrapper-service]", err.message)
+      logger.error("fenix-scraper-service", err.message)
     }
   })
 
-  console.log("[fenix-scrapper-service] Finished scraping courses")
+  logger.info("fenix-scraper-service", "Finished scraping courses")
 }
 
 const getSubjectExecutionCourseID = async (page: Page, subjectLink: string): Promise<string> => {
@@ -116,16 +136,14 @@ const getCourseSubjects = async (page: Page, courseCode: string): Promise<ISubje
   const subjects: ISubject[] = []
 
   for (let i = 0; i < names.length; i++) {
-    console.log("[fenix-scrapper-service] Getting execution course id for subject: ", names[i])
-
     const subjectExists = subjectService.findByLink(links[i])
     if (subjectExists !== null) {
-      console.log("[fenix-scrapper-service] Subject already exists, skipping")
+      logger.error("fenix-scraper-service", `Subject ${names[i]} already exists, skipping`)
       continue
     }
 
     const executionCodeID = await getSubjectExecutionCourseID(page, links[i])
-    console.log(`[fenix-scrapper-service] Execution course id for subject ${names[i]}: ${executionCodeID}`)
+    logger.info("fenix-scraper-service", `Execution course id for subject ${names[i]}: ${executionCodeID}`)
     const subject = {
       name: names[i],
       link: links[i],
@@ -139,14 +157,15 @@ const getCourseSubjects = async (page: Page, courseCode: string): Promise<ISubje
 }
 
 const scrapeSubjects = async (page: Page): Promise<void> => {
-  console.log("[fenix-scrapper-service] Scraping subjects ...")
+  logger.info("fenix-scraper-service", "Scraping subjects ...")
   const courses = await courseService.getAll()
 
   for (const course of courses) {
     try {
-      console.log("[fenix-scraper-service] Scraping subjects for course:", course.code)
+      logger.info("fenix-scraper-service", `Scraping subjects for course ${course.code} ...`)
       const subjects = await getCourseSubjects(page, course.code)
-      console.log("[fenix-scraper-service] Subjects scraped:\n", subjects)
+      logger.info("fenix-scraper-service", `Subjects scraped for course ${course.code}:`)
+      console.log(subjects)
 
       // Populate subjects if they don't exist
       subjects.forEach(async (subject) => {
@@ -158,35 +177,40 @@ const scrapeSubjects = async (page: Page): Promise<void> => {
             subject.course.toString()
           )
         } catch (err: any) {
-          console.error("[fenix-scraper-service]", err.message)
+          logger.error("fenix-scraper-service", err.message)
         }
       })
     } catch (err: any) {
-      console.error("[fenix-scraper-service]", err.message)
+      logger.error("fenix-scraper-service", err.message)
     }
   }
 
-  console.log("[fenix-scrapper-service] Finished scraping subjects")
+  logger.info("fenix-scraper-service", "Finished scraping subjects")
 }
 
 /**
- * Starts scrapping fenix website for courses, subjects and grades
+ * Starts scraping fenix website for courses, subjects and grades
  */
 const start = async (): Promise<void> => {
-  console.log("[fenix-scraper-service] Started ...")
+  logger.info("fenix-scraper-service", "Starting ...")
 
   // Initial setup
   puppeteer.use(StealthPlugin()) // avoids bot detection
-  const browser: Browser = await puppeteer.launch({ headless: false }) // launch the browser
-  const page: Page = await browser.newPage() // open a new page
+  const browser: Browser = await puppeteer.launch({ headless: false })
+  const page: Page = await browser.newPage()
 
   await scrapeCourses(page)
   await new Promise((resolve) => setTimeout(resolve, 2000)) // wait for db to store all courses (it takes time)
   await scrapeSubjects(page)
-  await authenticateUser(page)
+
+  try {
+    await authenticateUser(page)
+  } catch (err: any) {
+    logger.error("fenix-scraper-service", err.message)
+  }
 
   await browser.close()
-  console.log("[fenix-scraper-service] Finished")
+  logger.info("fenix-scraper-service", "Finished")
 }
 
 export default { start }
