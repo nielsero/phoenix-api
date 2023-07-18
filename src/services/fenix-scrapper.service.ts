@@ -17,29 +17,54 @@ const authenticateUser = async (page: Page): Promise<void> => {}
 const getCourses = async (page: Page): Promise<ICourse[]> => {
   await page.goto(config.fenixCoursesURL)
 
-  let courses = await page.evaluate(() => {
-    const courses: ICourse[] = []
+  // Get the names and codes (unformatted) of the courses
+  const { names, codes } = await page.evaluate(() => {
+    const names: string[] = []
+    const codes: string[] = []
     const table: HTMLTableElement | null =
       document.querySelector(".degreeTable")
 
-    if (table === null) return []
+    if (table === null) throw new Error("No courses table found")
 
     const rows = Array.from(table.querySelectorAll("tr"))
     for (const row of rows) {
       const cells = Array.from(row.querySelectorAll("td"))
       const name = cells[0].querySelector("a")?.title ?? ""
       const code = cells[1].querySelector("a")?.title ?? ""
-      courses.push({ code, name })
+      names.push(name)
+      codes.push(code)
     }
-    return courses
+    return { names, codes }
   })
 
-  courses = courses.map((course) => ({
-    code: formatCourseCode(course.code),
-    name: course.name
+  // Format the codes
+  const formattedCodes = codes.map((code) => formatCourseCode(code))
+
+  // Create the courses
+  const courses = names.map((name, index) => ({
+    name,
+    code: formattedCodes[index]
   }))
 
   return courses
+}
+
+const scrapeCourses = async (page: Page): Promise<void> => {
+  console.log("[fenix-scrapper-service] Scraping courses ...")
+
+  const courses = await getCourses(page)
+  console.log("[fenix-scrapper-service] Courses scraped:", courses)
+
+  // Populate courses if they don't exist
+  courses.forEach(async (course) => {
+    try {
+      await courseService.create(course.code, course.name)
+    } catch (err: any) {
+      console.error("[fenix-scrapper-service]", err.message)
+    }
+  })
+
+  console.log("[fenix-scrapper-service] Finished scraping courses")
 }
 
 const getSubjectExecutionCourseID = async (
@@ -64,10 +89,10 @@ const getCourseSubjects = async (
   page: Page,
   courseCode: string
 ): Promise<ISubject[]> => {
+  const course = await courseService.findByCode(courseCode)
   const courseURL = getCourseUrlFromCode(courseCode)
   await page.goto(courseURL)
 
-  const course = await courseService.findByCode(courseCode)
   if (course === null) throw new Error("Course not found")
 
   const subjects: ISubject[] = await page.evaluate(() => {
@@ -114,28 +139,40 @@ const getCourseSubjects = async (
   return subjects
 }
 
+const scrapeSubjects = async (page: Page): Promise<void> => {
+  console.log("[fenix-scrapper-service] Scraping subjects ...")
+
+  const courses = await courseService.getAll()
+
+  courses.forEach(async (course) => {
+    try {
+      console.log(
+        "[fenix-scraper-service] Scraping subjects for course:",
+        course.code
+      )
+      const subjects = await getCourseSubjects(page, course.code)
+      console.log("[fenix-scraper-service] Subjects scraped:", subjects)
+    } catch (err: any) {
+      console.error("[fenix-scraper-service]", err.message)
+    }
+  })
+
+  console.log("[fenix-scrapper-service] Finished scraping subjects")
+}
+
 /**
  * Starts scrapping fenix website for courses, subjects and grades
  */
 const start = async (): Promise<void> => {
-  console.log("[fenix-scraper] Started")
+  console.log("[fenix-scraper-service] Started ...")
 
+  // Initial setup
   puppeteer.use(StealthPlugin()) // avoids bot detection
-  const browser: Browser = await puppeteer.launch()
-  const page: Page = await browser.newPage()
+  const browser: Browser = await puppeteer.launch() // launch the browser
+  const page: Page = await browser.newPage() // open a new page
+
   await authenticateUser(page)
-
-  console.log("[fenix-scrapper] Courses:")
-  const courses = await getCourses(page)
-
-  // Populate courses if they don't exist
-  courses.forEach(async (course) => {
-    try {
-      await courseService.create(course.code, course.name)
-    } catch (err: any) {
-      console.log(err.message)
-    }
-  })
+  await scrapeCourses(page)
 
   const actualCourses = await courseService.getAll()
   console.log("actualCourses", actualCourses)
@@ -158,11 +195,8 @@ const start = async (): Promise<void> => {
     }
   }
 
-  const subjects = await getCourseSubjects(page, courses[0].code)
-  console.log(subjects)
-
   await browser.close()
-  console.log("[fenix-scraper] Finished")
+  console.log("[fenix-scraper-service] Finished")
 }
 
 export default { start }
