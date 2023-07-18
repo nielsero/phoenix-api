@@ -10,5 +10,6 @@ export default {
       : (process.env.MONGO_URI_DEV as string),
   fenixUsername: process.env.FENIX_USERNAME,
   fenixPassword: process.env.FENIX_PASSWORD,
-  fenixCoursesURL: "https://fenix.isutc.ac.mz/isutc/siteMap.do"
+  fenixCoursesURL: "https://fenix.isutc.ac.mz/isutc/siteMap.do",
+  fenixLoginURL: "https://fenix.isutc.ac.mz/cas/login?service=https://fenix.isutc.ac.mz/isutc/"
 }
