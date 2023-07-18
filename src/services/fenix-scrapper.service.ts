@@ -117,6 +117,13 @@ const getCourseSubjects = async (page: Page, courseCode: string): Promise<ISubje
 
   for (let i = 0; i < names.length; i++) {
     console.log("[fenix-scrapper-service] Getting execution course id for subject: ", names[i])
+
+    const subjectExists = subjectService.findByLink(links[i])
+    if (subjectExists !== null) {
+      console.log("[fenix-scrapper-service] Subject already exists, skipping")
+      continue
+    }
+
     const executionCodeID = await getSubjectExecutionCourseID(page, links[i])
     console.log(`[fenix-scrapper-service] Execution course id for subject ${names[i]}: ${executionCodeID}`)
     const subject = {
@@ -173,10 +180,10 @@ const start = async (): Promise<void> => {
   const browser: Browser = await puppeteer.launch({ headless: false }) // launch the browser
   const page: Page = await browser.newPage() // open a new page
 
-  await authenticateUser(page)
   await scrapeCourses(page)
   await page.waitForTimeout(2000) // wait for db to store all courses (apparently it takes time)
   await scrapeSubjects(page)
+  await authenticateUser(page)
 
   await browser.close()
   console.log("[fenix-scraper-service] Finished")

@@ -22,4 +22,9 @@ const create = async (
   return subject
 }
 
-export default { create }
+const findByLink = async (link: string): Promise<ISubject | null> => {
+  const subject = await SubjectModel.findOne({ link })
+  return subject
+}
+
+export default { create, findByLink }
